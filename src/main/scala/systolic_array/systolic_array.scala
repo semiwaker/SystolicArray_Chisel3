@@ -6,7 +6,7 @@ import chisel3.util._
 import scala.collection.immutable.Seq
 
 trait CodeGenerator {
-  val sig_start = RegInit(0.B)
+  val sig_start = Wire(Bool())
   val sig_end   = RegInit(1.B)
   def generate(): Unit
 }
@@ -28,7 +28,7 @@ object Code {
 
 class CodeBlock extends CodeGenerator {
   var stages = 0
-  var blocks = List[CodeGenerator](Nil)
+  var blocks = List[CodeGenerator]()
 
   def add(code: CodeGenerator): Unit = {
     blocks :+= code
@@ -39,29 +39,31 @@ class CodeBlock extends CodeGenerator {
     val state       = RegInit(code_states(0))
     when(!sig_end) {
       for (i <- 0 until stages)
+        blocks(i).generate()
+      printf("State %d\n", state)
+      for (i <- 0 until stages)
         when(state === code_states(i)) {
           when(blocks(i).sig_end) {
-            if (i != stages - 1)
+            if (i != stages - 1) {
               state := code_states(i + 1)
-            else {
+              blocks(i).sig_start := 1.B
+            } else {
               state := code_states(0)
               sig_end := 1.B
             }
-          }.otherwise {
-            blocks(i).generate()
           }
         }
     }
     when(sig_start) {
       sig_end := 0.B
-      for (b <- blocks)
-        b.sig_start := 1.B
+      state := code_states(0)
+      blocks(0).sig_start := 1.B
     }
   }
 }
 
-object CodeBlock{
-  def apply(code : Code) ={
+object CodeBlock {
+  def apply(code: Code) = {
     val c = new CodeBlock
     c.add(code)
     c
@@ -76,7 +78,7 @@ class ForLoop(variable: UInt, start: UInt, end: UInt, body: CodeBlock) extends C
       }.otherwise(
         when(!body.sig_end) {
           body.generate()
-        }.otherwise{
+        }.otherwise {
           variable := variable + 1.U
           body.sig_start := 1.B
         }
@@ -90,8 +92,8 @@ class ForLoop(variable: UInt, start: UInt, end: UInt, body: CodeBlock) extends C
   }
 }
 
-object ForLoop{
-  def apply(variable:UInt, start:UInt, end:UInt, body:CodeBlock) =
+object ForLoop {
+  def apply(variable: UInt, start: UInt, end: UInt)(body: CodeBlock) =
     new ForLoop(variable, start, end, body)
 }
 
