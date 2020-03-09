@@ -5,6 +5,96 @@ import chisel3.util._
 
 import scala.collection.immutable.Seq
 
+trait CodeGenerator {
+  val sig_start = RegInit(0.B)
+  val sig_end   = RegInit(1.B)
+  def generate(): Unit
+}
+
+class Code(func: (UInt) => Unit) extends CodeGenerator {
+  def generate(): Unit = {
+    when(!sig_end) {
+      func(sig_end)
+    }
+    when(sig_start) {
+      sig_end := 0.B
+    }
+  }
+}
+
+object Code {
+  def apply(func: (UInt) => Unit) = new Code(func)
+}
+
+class CodeBlock extends CodeGenerator {
+  var stages = 0
+  var blocks = List[CodeGenerator](Nil)
+
+  def add(code: CodeGenerator): Unit = {
+    blocks :+= code
+    stages += 1
+  }
+  def generate(): Unit = {
+    val code_states = Enum(stages).toArray
+    val state       = RegInit(code_states(0))
+    when(!sig_end) {
+      for (i <- 0 until stages)
+        when(state === code_states(i)) {
+          when(blocks(i).sig_end) {
+            if (i != stages - 1)
+              state := code_states(i + 1)
+            else {
+              state := code_states(0)
+              sig_end := 1.B
+            }
+          }.otherwise {
+            blocks(i).generate()
+          }
+        }
+    }
+    when(sig_start) {
+      sig_end := 0.B
+      for (b <- blocks)
+        b.sig_start := 1.B
+    }
+  }
+}
+
+object CodeBlock{
+  def apply(code : Code) ={
+    val c = new CodeBlock
+    c.add(code)
+    c
+  }
+}
+
+class ForLoop(variable: UInt, start: UInt, end: UInt, body: CodeBlock) extends CodeGenerator {
+  def generate(): Unit = {
+    when(!sig_end) {
+      when(variable === end) {
+        sig_end := 1.B
+      }.otherwise(
+        when(!body.sig_end) {
+          body.generate()
+        }.otherwise{
+          variable := variable + 1.U
+          body.sig_start := 1.B
+        }
+      )
+    }
+    when(sig_start) {
+      variable := start
+      body.sig_start := 1.B
+      sig_end := 0.B
+    }
+  }
+}
+
+object ForLoop{
+  def apply(variable:UInt, start:UInt, end:UInt, body:CodeBlock) =
+    new ForLoop(variable, start, end, body)
+}
+
 sealed trait SystolicArrayMode;
 
 case object NotSpecified     extends SystolicArrayMode;
