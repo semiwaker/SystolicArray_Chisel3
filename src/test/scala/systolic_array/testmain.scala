@@ -8,40 +8,33 @@ import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 
 class TestModule extends Module {
   val io = IO(new Bundle {
-    val in    = Input(UInt(1.W))
+    val in    = Input(Bool())
     val start = Input(Bool())
-    val out   = Output(UInt(1.W))
+    val out   = Output(UInt(8.W))
   })
-  val reg = RegNext(io.in)
+  val reg = RegNext(io.out, init = 0.U)
+  val i   = Reg(UInt(8.W))
   io.out := reg
-  val c = CodeBlock(Code((sig_end) => {
-    reg := 1.U
-    printf(p"$io\n")
-    sig_end := 1.B
-  }))
-  c.add(Code((sig_end) => {
-    reg := 2.U
-    printf(p"$io\n")
-    sig_end := 1.B
-  }))
+  reg := reg
+  val c = ForLoop(i, 0.U, 3.U, "Main")(CodeBlock("LoopBody")(Code((sig_fin) => {
+    reg := i
+    sig_fin := 1.B
+  }, "LoopBodyCode")))
   c.generate()
-  c.sig_start := io.start
-  printf("Step %d %d %d %d\n", c.sig_start, c.sig_end, reg, io.out)
+  c.sig_reset := io.start
+  c.sig_en := 1.B
+  printf("Step en %d fin %d reg %d out %d\n", c.sig_en, c.sig_fin, reg, io.out)
 }
 
 class Tester(t: TestModule) extends PeekPokeTester(t) {
   poke(t.io.start, 1)
-  expect(t.io.out, 0)
   step(1)
   poke(t.io.start, 0)
-  step(1)
-  step(1)
-  step(1)
-  step(1)
-  step(1)
+  step(10)
 }
 
 object Main extends App {
+  DebugSwitch.on()
   iotesters.Driver.execute(args, () => new TestModule) { c =>
     new Tester(c)
   }
