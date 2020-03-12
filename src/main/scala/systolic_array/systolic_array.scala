@@ -5,140 +5,6 @@ import chisel3.util._
 
 import scala.collection.immutable.Seq
 
-object DebugSwitch {
-  var switch           = false
-  def apply(): Boolean = switch
-  def on(): Unit       = { switch = true }
-  def off(): Unit      = { switch = false }
-}
-
-object UnnamedCode {
-  var cnt = 0
-  def apply(): Int = {
-    cnt += 1
-    cnt
-  }
-}
-
-abstract class CodeGenerator(code_name: String = s"Unnamed Code ${UnnamedCode()}") {
-  val sig_en    = Wire(Bool())
-  val sig_fin   = RegInit(0.B)
-  val sig_reset = Wire(Bool())
-
-  sig_reset := 0.B
-
-  def generate(): Unit
-
-  def dprintf(pable: Printable): Unit =
-    if (DebugSwitch())
-      printf(pable)
-}
-
-class Code(func: (UInt) => Unit, name: String = s"Unnamed Code ${UnnamedCode()}") extends CodeGenerator(name) {
-  def generate(): Unit = {
-    when(sig_en) {
-      func(sig_fin)
-    }
-    when(sig_reset) {
-      dprintf(p"$name reset\n")
-      sig_fin := 0.B
-    }
-  }
-}
-
-object Code {
-  def apply(func: (UInt) => Unit, name: String = s"Unnamed Code ${UnnamedCode()}") = new Code(func, name)
-}
-
-class CodeBlock(name: String = s"Unnamed Code Block ${UnnamedCode()}") extends CodeGenerator(name) {
-  var stages = 0
-  var blocks = List[CodeGenerator]()
-
-  def add(code: CodeGenerator): Unit = {
-    blocks :+= code
-    stages += 1
-  }
-  def generate(): Unit = {
-    val code_states = Enum(stages + 1).toArray
-    val state       = RegInit(code_states(0))
-    for (i <- 0 until stages)
-      blocks(i).generate()
-    for (i <- 0 until stages)
-      blocks(i).sig_en := 0.B
-    when(sig_reset) {
-      dprintf(p"$name Reset\n")
-      state := code_states(0)
-      blocks(0).sig_reset := 1.B
-      sig_fin := 0.B
-    }
-    when(sig_en) {
-      dprintf(p"$name State $state\n")
-      for (i <- 0 until stages)
-        when(state === code_states(i)) {
-          when(blocks(i).sig_fin) {
-            state := code_states(i + 1)
-            if (i != stages - 1)
-              blocks(i + 1).sig_reset := 1.B
-          }.otherwise {
-            blocks(i).sig_en := 1.B
-            state := code_states(i)
-          }
-        }
-      when(state === code_states(stages)) {
-        sig_fin := 1.B
-      }
-    }
-  }
-}
-
-object CodeBlock {
-  def apply(name: String = s"Unnamed Code Block ${UnnamedCode()}")(code: Code) = {
-    val c = new CodeBlock(name)
-    c.add(code)
-    c
-  }
-}
-
-class ForLoop(
-    variable: UInt,
-    start: UInt,
-    end: UInt,
-    body: CodeBlock,
-    name: String = s"Unnamed ForLoop ${UnnamedCode()}"
-) extends CodeGenerator(name) {
-  def generate(): Unit = {
-    body.generate()
-    body.sig_en := 0.B
-    variable := variable
-    when(sig_reset) {
-      dprintf(p"$name reset\n")
-      variable := start
-      body.sig_reset := 1.B
-      sig_fin := 0.B
-    }
-    when(sig_en) {
-      dprintf(p"$name Var $variable\n")
-      when(variable === end) {
-        sig_fin := 1.B
-      }.otherwise(
-        when(body.sig_fin) {
-          variable := variable + 1.U
-          body.sig_reset := 1.B
-        }.otherwise {
-          body.sig_en := 1.B
-        }
-      )
-    }
-  }
-}
-
-object ForLoop {
-  def apply(variable: UInt, start: UInt, end: UInt, name: String = s"Unnamed ForLoop ${UnnamedCode()}")(
-      body: CodeBlock
-  ) =
-    new ForLoop(variable, start, end, body, name)
-}
-
 sealed trait SystolicArrayMode;
 
 case object NotSpecified     extends SystolicArrayMode;
@@ -159,7 +25,7 @@ class SystolicArray(
     val m      = Input(UInt(dataW.W))
     val w      = Input(UInt(dataW.W))
     val h      = Input(UInt(dataW.W))
-    val en     = Input(Bool())
+    val start  = Input(Bool())
     val i_addr = Input(UInt(addrW.W))
     val w_addr = Input(UInt(addrW.W))
     val o_addr = Input(UInt(addrW.W))
@@ -178,13 +44,13 @@ class SystolicArray(
   val n_o = RegNext(io.n)
   val m_o = RegNext(io.m)
 
-  when(io.en) {
+  when(io.start) {
     n := io.n
     m := io.m
     w := io.w
     h := io.h
-    n := io.n - io.w
-    m := io.m - io.h
+    n_o := io.n - io.w
+    m_o := io.m - io.h
   }
 
   // The work state of a cell
@@ -309,52 +175,75 @@ class SystolicArray(
       val calculating = RegInit(0.B)
       val load_x      = RegInit(0.U(dataW.W))
       val load_y      = RegInit(0.U(dataW.W))
+      val write_addr_reg = RegInit(UInt(addrW.W))
 
       val (sum_reg, delay) = make_add_tree()
-      val stop_m           = m + delay.U
+      val stop_m           = RegNext(m)
+      val stop_n           = RegNext(n)
+      stop_m := m + delay.U
+      stop_n := n - array_W.U
 
-      when(!calculating && !loading) {
-        when(y >= h) {
-          io.valid := 1.B
-          state_reg := s_idle
-        }.elsewhen(x >= w) {
-            x := 0.U
-            y := y + array_H.U
-          }
-          .otherwise {
-            loading := 1.B
-            state_reg := s_init
-            load_y := 0.U
-            for (i <- 0 until array_W)
-              read_addr_reg(i) := y * w + x + i.U + io.w_addr
-          }
-      }.elsewhen(loading) {
-          when(load_y === array_H.U) {
-            loading := 0.B
-            state_reg := s_work
-            calculating := 1.B
-            load_x := 0.U
-            load_y := 0.U
-          }.otherwise {
-            for (i <- 0 until array_W) {
-              cellArray(i).io.up_in := data_w(read_addr_reg(i))
-              read_addr_reg(i) := read_addr_reg(i) + w
-            }
-            load_y := load_y + 1.U
-          }
-        }
-        .elsewhen(calculating) {
-          when(load_y === stop_m) {
-            load_x := load_x + 1.U
-          }.elsewhen(load_y < m) {
-              for (i <- 0 until array_W) {
-                cellArray(i).io.up_in := data_w(read_addr_reg(i))
-                read_addr_reg(i) := read_addr_reg(i) + n
-              }
-              load_y := load_y + 1.U
-            }
-            .otherwise {}
-        }
+      val mainCode = CodeBlock("mainCode")(
+        ForLoop(y, 0.U, m_o , name="Clear_y_loop")(
+          ForLoop(x, 0.U, n_o, name="Clear_x_loop")(
+            CodeBlock("Clear_body")(
+              OneStepCode("Clear_Prepare")
+              {
+                write_addr_reg := y * n_o + io.o_addr
+              } :: OneStepCode("Clear_work"){
+                data_o(write_addr_reg) := 0.U
+                write_addr_reg := write_addr_reg + 1.U
+              } :: Nil
+            )
+          )
+        ):: ForLoop(y, 0.U, h, array_H.U, "y_loop")(
+          ForLoop(x, 0.U, w, array_W.U, "x_loop")(
+            CodeBlock("Body")(
+              OneStepCode("Prepare") {
+                state_reg := s_init
+                for (i <- 0 until array_W)
+                  read_addr_reg(i) := y * w + x + i.U + io.w_addr
+              }::ForLoop(load_y, 0.U, array_H.U, 1.U, "Load_loop")(
+                OneStepCode("Load") {
+                  for (i <- 0 until array_W) {
+                    cellArray(i).io.up_in := data_w(read_addr_reg(i))
+                    read_addr_reg(i) := read_addr_reg(i) + w
+                  }
+                }
+              ) :: OneStepCode("LoadFin") {
+                state_reg := s_work
+              } :: ForLoop(load_x, x, stop_n, 1.U, "Calc_x_loop")(
+                CodeBlock("Calc")(
+                  OneStepCode("Calc_prepare"){
+                    for (i <- 0 until array_W)
+                      read_addr_reg(i) := load_x + i.U + io.i_addr
+                    write_addr_reg := load_x - x
+                  } :: ForLoop(load_y, y, stop_m, 1.U, "Calc_y_loop")(
+                    OneStepCode("Calc"){
+                      when(load_y < m){
+                        for (i<-0 until array_W){
+                          cellArray(i).io.up_in := data_w(read_addr_reg(i))
+                          read_addr_reg(i) := read_addr_reg(i) + n
+                        }
+                      }
+                      when(load_y >= y + delay.U + array_H.U){
+                        data_o(write_addr_reg) := data_o(write_addr_reg) + sum_reg
+                        write_addr_reg := write_addr_reg + n_o
+                      }
+                    }
+                  ) :: Nil
+                )
+              ) :: Nil
+            )
+          )
+        ) :: Nil
+      )
+
+      mainCode.generate()
+
+      io.valid := mainCode.sig_fin
+      mainCode.sig_en := 1.B
+      mainCode.sig_reset := io.start
     }
     case _ => {}
   }
