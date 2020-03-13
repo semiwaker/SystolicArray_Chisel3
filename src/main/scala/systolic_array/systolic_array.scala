@@ -73,133 +73,156 @@ class SystolicArray(
     m := io.m
     w := io.w
     h := io.h
-    n_o := io.n - io.w + 1
-    m_o := io.m - io.h + 1
+    n_o := io.n - io.w + 1.U
+    m_o := io.m - io.h + 1.U
     start_reg := 1.B
   }
 
   // The work state of a cell
   val s_idle :: s_init :: s_work :: s_output :: Nil = Enum(4)
 
+  val v_pass = Wire(Bool())
+  val h_pass = Wire(Bool())
+  v_pass := 0.B
+  h_pass := 1.B
+
   // Defining a cell in the array
-  class Cell extends Module {
-    val io = IO(new Bundle {
-      val up_in    = Input(UInt(dataW.W))
-      val up_bub   = Input(Bool())
-      val left_in  = Input(UInt(dataW.W))
-      val left_bub = Input(Bool())
-      val state_in = Input(UInt())
+  class Cell {
+    val up_in    = Wire(UInt(dataW.W))
+    val up_bub   = Wire(Bool())
+    val left_in  = Wire(UInt(dataW.W))
+    val left_bub = Wire(Bool())
+    val state_in = Wire(UInt())
 
-      val out       = Output(UInt(dataW.W))
-      val down_out  = Output(UInt(dataW.W))
-      val down_bub  = Output(Bool())
-      val right_out = Output(UInt(dataW.W))
-      val right_bub = Output(Bool())
-      val state_out = Output(UInt())
-    })
+    val out       = Wire(UInt(dataW.W))
+    val down_out  = Wire(UInt(dataW.W))
+    val down_bub  = Wire(Bool())
+    val right_out = Wire(UInt(dataW.W))
+    val right_bub = Wire(Bool())
+    val state_out = Wire(UInt())
 
-    val reg      = Reg(UInt(dataW.W))
+    val w_reg    = Reg(UInt(dataW.W))
     val out_reg  = Reg(UInt(dataW.W))
     val vert_reg = Reg(UInt(dataW.W))
     val vert_bub = Reg(Bool())
     val hori_reg = Reg(UInt(dataW.W))
     val hori_bub = Reg(Bool())
-    vert_reg := io.up_in
-    io.down_out := vert_reg
-    vert_bub := io.up_bub
-    io.down_bub := vert_bub
 
-    hori_reg := io.left_in
-    io.right_out := hori_reg
-    hori_bub := io.left_bub
-    io.right_bub := hori_bub
+    down_out := vert_reg
+    down_bub := vert_bub
+    when(v_pass) {
+      vert_reg := up_in
+      vert_bub := up_bub
+    }.otherwise {
+      vert_reg := vert_reg
+      vert_bub := vert_bub
+    }
 
-    io.state_out := io.state_in
+    right_out := hori_reg
+    right_bub := hori_bub
+    when(h_pass) {
+      hori_reg := left_in
+      hori_bub := left_bub
+    }.otherwise {
+      hori_reg := hori_reg
+      hori_bub := hori_bub
+    }
 
-    reg := reg
+    state_out := state_in
+
+    w_reg := w_reg
     out_reg := out_reg
 
-    io.out := out_reg
+    out := out_reg
 
-    when(io.state_in === s_work) {
+    when(state_in === s_work) {
       mode match {
         case InputStationary  => {}
         case OutputStationary => {}
         case WeightStationary => {
-          when(!vert_bub) { io.out := reg * vert_reg }
-            .otherwise { io.out := 0.U }
+          when(!vert_bub) { out_reg := w_reg * vert_reg }
+            .otherwise { out_reg := 0.U }
         }
         case NotSpecified => {}
       }
-    }.elsewhen(io.state_in === s_init) {
-        reg := io.up_in
+    }.elsewhen(state_in === s_init) {
+        w_reg := vert_reg
       }
-      .elsewhen(io.state_in === s_output) {
-        io.down_out := out_reg
-        out_reg := io.up_in
+      .elsewhen(state_in === s_output) {
+        down_out := out_reg
+        out_reg := up_in
       }
 
   }
 
-  val cellArray = (
-    for (i <- 0 until array_H; j <- 0 until array_W) yield Module(new Cell)
-  ).toArray
+  val cellArray = (for (i <- 0 until array_H) yield (for (j <- 0 until array_W) yield new Cell()).toArray).toArray
+  // val cellArray = Array.ofDim[Cell](array_H, array_W)
   for (i <- 0 until array_H; j <- 0 until array_W) {
     if (i != 0) {
-      cellArray(i * array_H + j).io.up_in := cellArray((i - 1) * array_H + j).io.down_out
-      cellArray(i * array_H + j).io.up_bub := cellArray((i - 1) * array_H + j).io.down_bub
-      cellArray(i * array_H + j).io.state_in := cellArray((i - 1) * array_H + j).io.state_out
+      cellArray(i)(j).up_in := cellArray(i - 1)(j).down_out
+      cellArray(i)(j).up_bub := cellArray(i - 1)(j).down_bub
+      cellArray(i)(j).state_in := cellArray(i - 1)(j).state_out
     } else {
-      cellArray(i * array_H + j).io.up_in := 0.U
-      cellArray(i * array_H + j).io.up_bub := 0.B
+      cellArray(i)(j).up_in := 0.U
+      cellArray(i)(j).up_bub := 0.B
       if (j != 0)
-        cellArray(i * array_H + j).io.state_in := cellArray(i * array_H + (j - 1)).io.state_out
+        cellArray(i)(j).state_in := cellArray(i)(j - 1).state_out
     }
 
     if (j != 0) {
-      cellArray(i * array_H + j).io.left_in := cellArray(i * array_H + (j - 1)).io.right_out
-      cellArray(i * array_H + j).io.left_bub := cellArray(i * array_H + (j - 1)).io.right_bub
+      cellArray(i)(j).left_in := cellArray(i)(j - 1).right_out
+      cellArray(i)(j).left_bub := cellArray(i)(j - 1).right_bub
     } else {
-      cellArray(i * array_H + j).io.left_in := 0.U
-      cellArray(i * array_H + j).io.left_bub := 0.B
+      cellArray(i)(j).left_in := 0.U
+      cellArray(i)(j).left_bub := 0.B
     }
   }
   val read_addr_reg = (for (i <- 0 until array_W) yield RegInit(0.U(addrW.W))).toArray
 
   for (i <- 0 until array_W) read_addr_reg(i) := read_addr_reg(i)
 
+  val add_tree_move = Wire(Bool())
+  add_tree_move := 0.B
+
   // A helper function to make an addition tree when output reduce is needed
   def make_add_tree() = {
     def makeTree(l: Int, r: Int, a: Array[UInt]): Tuple2[UInt, Int] = {
       val reg = Reg(UInt(dataW.W))
+      reg := reg
       if (l == r) {
-        reg := a(l)
+        when(add_tree_move) {
+          reg := a(l)
+        }
         (reg, 1)
       } else if (r == l + 1) {
-        reg := a(l) + a(r)
+        when(add_tree_move) {
+          reg := a(l) + a(r)
+        }
         (reg, 1)
       } else {
         val m               = (l + r) / 2
         val (lreg, lheight) = makeTree(l, m, a)
         val (rreg, rheight) = makeTree(m + 1, r, a)
-        reg := lreg + rreg
+        when(add_tree_move) {
+          reg := lreg + rreg
+        }
         (reg, if (lheight > rheight) lheight + 1 else rheight + 1)
       }
     }
     val lines = (
       for (i <- 0 until array_H) yield {
-        val row = (for (j <- 0 until array_W) yield cellArray(i * array_H + j).io.out).toArray
+        val row = (for (j <- 0 until array_W) yield cellArray(i)(j).out).toArray
         makeTree(0, array_W - 1, row)
       }
     ).toArray
     val col       = { for ((reg, h) <- lines) yield reg }.toArray
     val h1        = { for ((reg, h) <- lines) yield h }.max
     val (reg, h2) = makeTree(0, array_H - 1, col)
-    (reg, h1 + h2)
+    (reg, h1 + h2 - 1)
   }
 
   val state_reg = RegInit(s_idle)
-  cellArray(0).io.state_in := state_reg
+  cellArray(0)(0).state_in := state_reg
 
   mode match {
     case InputStationary  => {}
@@ -220,8 +243,8 @@ class SystolicArray(
       val stop_m           = RegNext(m)
       val stop_n           = RegNext(n)
       when(io.start) {
-        stop_m := io.m + delay.U
-        stop_n := io.n - array_W.U
+        stop_m := io.m + delay.U + 2.U
+        stop_n := io.n - array_W.U + 1.U
       }.otherwise {
         stop_m := stop_m
         stop_n := stop_n
@@ -248,8 +271,9 @@ class SystolicArray(
                   read_addr_reg(i) := y * w + x + i.U + io.w_addr
               } :: ForLoop(load_y, 0.U, array_H.U, 1.U, "Load_loop")(
                 OneStepCode("Load") {
+                  v_pass := 1.B
                   for (i <- 0 until array_W) {
-                    cellArray(i).io.up_in := data(read_addr_reg(i))
+                    cellArray(0)(i).up_in := data(read_addr_reg(i))
                     read_addr_reg(i) := read_addr_reg(i) + w
                   }
                 }
@@ -263,14 +287,16 @@ class SystolicArray(
                     write_addr_reg := calc_x - x + io.o_addr
                   } :: ForLoop(calc_y, y, stop_m, 1.U, "Calc_y_loop")(
                     OneStepCode("Calc_y") {
+                      v_pass := 1.B
+                      add_tree_move := 1.B
                       when(calc_y < m) {
                         for (i <- 0 until array_W) {
-                          cellArray(i).io.up_in := data(read_addr_reg(i))
+                          cellArray(0)(i).up_in := data(read_addr_reg(i))
                           read_addr_reg(i) := read_addr_reg(i) + n
                         }
                       }
-                      when(calc_y >= y + delay.U + array_H.U) {
-                        printf(p"Add $sum_reg at $write_addr_reg\n")
+                      when(calc_y > y + delay.U + array_H.U) {
+                        // printf(p"Add $sum_reg at $write_addr_reg\n")
                         data(write_addr_reg) := data(write_addr_reg) + sum_reg
                         write_addr_reg := write_addr_reg + n_o
                       }
@@ -288,6 +314,16 @@ class SystolicArray(
       io.valid := mainCode.sig_fin
       mainCode.sig_en := start_reg
       mainCode.sig_reset := io.start
+
+      // when(start_reg) {
+      //   for (i <- 0 until array_H) {
+      //     for (j <- 0 until array_W)
+      //       printf(p"${cellArray(i)(j).vert_reg}")
+      //     printf("\n")
+      //   }
+      //   printf("\n")
+      // }
+
     }
     case _ => {}
   }

@@ -40,24 +40,24 @@ class SystolicArrayTester(t: SystolicArray) extends PeekPokeTester(t) {
   val w_addr = n * m
   val o_addr = n * m + w * h
 
-  println(s"A m $m n $n")
-  for (i <- 0 until m) {
-    for (j <- 0 until n)
-      print(s"${a(i)(j)} ")
-    println("")
-  }
-  println(s"B h $h w $w")
-  for (i <- 0 until h) {
-    for (j <- 0 until w)
-      print(s"${b(i)(j)} ")
-    println("")
-  }
-  println(s"C m_o ${m - h} n_o ${n - w}")
-  for (i <- 0 until m - h + 1) {
-    for (j <- 0 until n - w + 1)
-      print(s"${c(i)(j)} ")
-    println("")
-  }
+  // println(s"A m $m n $n")
+  // for (i <- 0 until m) {
+  //   for (j <- 0 until n)
+  //     print(s"${a(i)(j)} ")
+  //   println("")
+  // }
+  // println(s"B h $h w $w")
+  // for (i <- 0 until h) {
+  //   for (j <- 0 until w)
+  //     print(s"${b(i)(j)} ")
+  //   println("")
+  // }
+  // println(s"C m_o ${m - h} n_o ${n - w}")
+  // for (i <- 0 until m - h + 1) {
+  //   for (j <- 0 until n - w + 1)
+  //     print(s"${c(i)(j)} ")
+  //   println("")
+  // }
 
   poke(t.io.is_wr, 1)
   for (i <- 0 until m; j <- 0 until n) {
@@ -102,7 +102,7 @@ class SystolicArrayTester(t: SystolicArray) extends PeekPokeTester(t) {
   }
   poke(t.io.is_rd, 1)
   for (i <- 0 until m - h + 1; j <- 0 until n - w + 1) {
-    poke(t.io.rdwr_addr, i * (n - w) + j + o_addr)
+    poke(t.io.rdwr_addr, i * (n - w + 1) + j + o_addr)
     step(1)
     expect(t.io.rd_value, c(i)(j))
   }
