@@ -206,7 +206,19 @@ class SystolicArray(
         when(add_tree_move) {
           reg := lreg + rreg
         }
-        (reg, if (lheight > rheight) lheight + 1 else rheight + 1)
+        if (lheight == rheight)
+          (reg, lheight + 1)
+        else {
+          val mid_reg = RegNext(reg)
+          mid_reg := mid_reg
+          when(add_tree_move) {
+            if (lheight > rheight)
+              mid_reg := rreg
+            else
+              mid_reg := lreg
+          }
+          (mid_reg, if (lheight > rheight) lheight + 1 else rheight + 1)
+        }
       }
     }
     val lines = (
@@ -240,15 +252,12 @@ class SystolicArray(
       write_addr_reg := write_addr_reg
 
       val (sum_reg, delay) = make_add_tree()
-      val stop_m           = RegNext(m)
-      val stop_n           = RegNext(n)
-      when(io.start) {
-        stop_m := io.m + delay.U + 2.U
-        stop_n := io.n - array_W.U + 1.U
-      }.otherwise {
-        stop_m := stop_m
-        stop_n := stop_n
-      }
+      // println(s"Delay $delay")
+      val stop_m = RegNext(m)
+      val stop_n = RegNext(m)
+
+      stop_m := stop_m
+      stop_n := stop_n
 
       val mainCode = CodeBlock("mainCode")(
         ForLoop(clear_y, 0.U, m_o, 1.U, "Clear_y_loop")(
@@ -266,6 +275,7 @@ class SystolicArray(
           ForLoop(x, 0.U, w, array_W.U, "x_loop")(
             CodeBlock("Body")(
               OneStepCode("Prepare") {
+                // printf(p"y $y x $x\n")
                 state_reg := s_init
                 for (i <- 0 until array_W)
                   read_addr_reg(i) := y * w + x + i.U + io.w_addr
@@ -279,11 +289,13 @@ class SystolicArray(
                 }
               ) :: OneStepCode("LoadFin") {
                 state_reg := s_work
+                stop_m := m_o + delay.U + y + array_H.U + 1.U
+                stop_n := n_o + x
               } :: ForLoop(calc_x, x, stop_n, 1.U, "Calc_x_loop")(
                 CodeBlock("Calc_x")(
                   OneStepCode("Calc_prepare") {
                     for (i <- 0 until array_W)
-                      read_addr_reg(i) := calc_x + i.U + io.i_addr
+                      read_addr_reg(i) := y * n + calc_x + i.U + io.i_addr
                     write_addr_reg := calc_x - x + io.o_addr
                   } :: ForLoop(calc_y, y, stop_m, 1.U, "Calc_y_loop")(
                     OneStepCode("Calc_y") {

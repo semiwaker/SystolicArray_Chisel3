@@ -20,11 +20,11 @@ class SystolicArrayTester(t: SystolicArray) extends PeekPokeTester(t) {
     out
   }
 
-  val rand = new Random
-  val m    = 4
-  val n    = 4
-  val h    = 2
-  val w    = 2
+  val rand = new Random(1)
+  val m    = 64
+  val n    = 64
+  val h    = 32
+  val w    = 32
 
   val a = Array.ofDim[Int](m, n)
   val b = Array.ofDim[Int](h, w)
@@ -95,10 +95,8 @@ class SystolicArrayTester(t: SystolicArray) extends PeekPokeTester(t) {
   step(1)
   poke(t.io.start, 0)
 
-  var cnt = 0
-  while (peek(t.io.valid) != 1 && cnt <= 1000) {
+  while (peek(t.io.valid) != 1) {
     step(1)
-    cnt += 1
   }
   poke(t.io.is_rd, 1)
   for (i <- 0 until m - h + 1; j <- 0 until n - w + 1) {
@@ -111,7 +109,7 @@ class SystolicArrayTester(t: SystolicArray) extends PeekPokeTester(t) {
 
 object SystolicArrayTestMain extends App {
   // DebugSwitch.on()
-  iotesters.Driver.execute(args, () => new SystolicArray(32, 32, 2, 2, 1024, WeightStationary)) { c =>
+  iotesters.Driver.execute(args, () => new SystolicArray(32, 32, 8, 8, 1048576, WeightStationary)) { c =>
     new SystolicArrayTester(c)
   }
 }
