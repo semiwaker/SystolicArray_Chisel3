@@ -6,7 +6,7 @@ import chisel3.util._
 import chisel3.iotesters
 import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 
-class TestModule extends Module {
+class CodeGenTestModule extends Module {
   val io = IO(new Bundle {
     val in    = Input(Bool())
     val start = Input(Bool())
@@ -15,6 +15,7 @@ class TestModule extends Module {
   val reg = RegNext(io.out, init = 0.U)
   val i   = RegNext(io.out)
   val j   = RegNext(io.out)
+  val m   = Mem(8, UInt(8.W))
   io.out := reg
   reg := reg
   val c = ForLoop(i, 0.U, 6.U, 2.U, "Outer")(
@@ -34,16 +35,16 @@ class TestModule extends Module {
   printf("Step out %d\n", io.out)
 }
 
-class Tester(t: TestModule) extends PeekPokeTester(t) {
+class CodeGenTester(t: CodeGenTestModule) extends PeekPokeTester(t) {
   poke(t.io.start, 1)
   step(1)
   poke(t.io.start, 0)
   step(30)
 }
 
-object Main extends App {
+object CodeGenMain extends App {
   // DebugSwitch.on()
-  iotesters.Driver.execute(args, () => new TestModule) { c =>
-    new Tester(c)
+  iotesters.Driver.execute(args, () => new CodeGenTestModule) { c =>
+    new CodeGenTester(c)
   }
 }

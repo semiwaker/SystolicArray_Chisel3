@@ -20,7 +20,7 @@ object UnnamedCode {
   }
 }
 
-abstract class CodeGenerator(code_name: String = s"Unnamed Code ${UnnamedCode()}") {
+abstract class CodeGenerator(name: String = s"Unnamed Code ${UnnamedCode()}") {
   val sig_en    = Wire(Bool())
   val sig_fin   = RegInit(0.B)
   val sig_reset = Wire(Bool())
@@ -28,6 +28,8 @@ abstract class CodeGenerator(code_name: String = s"Unnamed Code ${UnnamedCode()}
   sig_reset := 0.B
 
   def generate(): Unit
+
+  def code_name = name
 
   def dprintf(pable: Printable): Unit =
     if (DebugSwitch())
@@ -87,8 +89,10 @@ class CodeBlock(name: String = s"Unnamed Code Block ${UnnamedCode()}") extends C
             state := code_states(i + 1)
             if (i != stages - 1)
               blocks(i + 1).sig_reset := 1.B
-            else
+            else {
               sig_fin := 1.B
+              // dprintf(p"$name Finished\n")
+            }
           }.otherwise {
             blocks(i).sig_en := 1.B
             state := code_states(i)
@@ -132,14 +136,14 @@ class ForLoop(
       dprintf(p"$name Var $variable\n")
       when(variable >= end) {
         sig_fin := 1.B
-      }.otherwise(
+      }.otherwise {
         when(body.sig_fin) {
           variable := variable + stride
           body.sig_reset := 1.B
         }.otherwise {
           body.sig_en := 1.B
         }
-      )
+      }
     }
   }
 }

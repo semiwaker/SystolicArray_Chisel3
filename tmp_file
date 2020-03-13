@@ -1,0 +1,13 @@
+[info] Loading settings for project systolic_array-build from metals.sbt,plugins.sbt ...
+[info] Loading project definition from E:\work\Hardware\Chisel\systolic_array\project
+[info] Loading settings for project systolic_array from build.sbt ...
+[info] Set current project to systolic_array (in build file:/E:/work/Hardware/Chisel/systolic_array/)
+[info] Compiling 1 Scala source to E:\work\Hardware\Chisel\systolic_array\target\scala-2.12\classes ...
+[warn] there were 68 feature warnings; re-run with -feature for details
+[warn] one warning found
+[info] Done compiling.
+[error] java.lang.RuntimeException: No main class detected.
+[error] 	at scala.sys.package$.error(package.scala:30)
+[error] stack trace is suppressed; run 'last Compile / bgRun' for the full output
+[error] (Compile / bgRun) No main class detected.
+[error] Total time: 5 s, completed 2020-3-13 16:44:40
