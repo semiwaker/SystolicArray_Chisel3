@@ -5,7 +5,7 @@ import scala.util.Random
 import chisel3.iotesters
 import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 
-class SystolicArrayTester(t: SystolicArray) extends PeekPokeTester(t) {
+class SystolicArrayOldTester(t: SystolicArrayOld) extends PeekPokeTester(t) {
 
   def conv(in: Array[Array[Int]], weight: Array[Array[Int]]): Array[Array[Int]] = {
     val m   = in.length
@@ -20,7 +20,7 @@ class SystolicArrayTester(t: SystolicArray) extends PeekPokeTester(t) {
     out
   }
 
-  val rand = new Random(1)
+  val rand = new Random
   val m    = 64
   val n    = 64
   val h    = 32
@@ -107,9 +107,9 @@ class SystolicArrayTester(t: SystolicArray) extends PeekPokeTester(t) {
   poke(t.io.is_rd, 0)
 }
 
-object SystolicArrayTestMain extends App {
+object SystolicArrayOldTestMain extends App {
   // DebugSwitch.on()
-  iotesters.Driver.execute(args, () => new SystolicArray(32, 32, 8, 8, 1048576, WeightStationary)) { c =>
-    new SystolicArrayTester(c)
+  iotesters.Driver.execute(args, () => new SystolicArrayOld(32, 32, 8, 8, 1048576, WeightStationary)) { c =>
+    new SystolicArrayOldTester(c)
   }
 }

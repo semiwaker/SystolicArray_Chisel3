@@ -342,3 +342,5 @@ hs_err_pid*
 .vscode/*
 .bloop/*
 null/*
+
+/other/*

@@ -7,7 +7,7 @@ def scalacOptionsVersion(scalaVersion: String): Seq[String] = {
     //  https://github.com/scala/bug/issues/10047
     CrossVersion.partialVersion(scalaVersion) match {
       case Some((2, scalaMajor: Long)) if scalaMajor < 12 => Seq()
-      case _ => Seq("-Xsource:2.11")
+      case _                                              => Seq("-Xsource:2.11")
     }
   }
 }
@@ -41,12 +41,26 @@ resolvers ++= Seq(
 
 // Provide a managed dependency on X if -DXVersion="" is supplied on the command line.
 val defaultVersions = Map(
-  "chisel3" -> "3.2.+",
+  "chisel3"          -> "3.2.+",
   "chisel-iotesters" -> "1.3.+"
-  )
+)
 
-libraryDependencies ++= Seq("chisel3","chisel-iotesters").map {
-  dep: String => "edu.berkeley.cs" %% dep % sys.props.getOrElse(dep + "Version", defaultVersions(dep)) }
+libraryDependencies ++= Seq("chisel3", "chisel-iotesters").map { dep: String =>
+  "edu.berkeley.cs" %% dep % sys.props.getOrElse(dep + "Version", defaultVersions(dep))
+}
+libraryDependencies ++= Seq(
+  // Last stable release
+  "org.scalanlp" %% "breeze" % "1.0",
+  // Native libraries are not included by default. add this if you want them
+  // Native libraries greatly improve performance, but increase jar sizes.
+  // It also packages various blas implementations, which have licenses that may or may not
+  // be compatible with the Apache License. No GPL code, as best I know.
+  "org.scalanlp" %% "breeze-natives" % "1.0",
+  // The visualization library is distributed separately as well.
+  // It depends on LGPL code
+  "org.scalanlp" %% "breeze-viz" % "1.0"
+)
+resolvers += "Sonatype Releases" at "https://oss.sonatype.org/content/repositories/releases/"
 
 scalacOptions ++= scalacOptionsVersion(scalaVersion.value)
 
