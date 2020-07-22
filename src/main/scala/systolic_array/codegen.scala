@@ -160,3 +160,46 @@ object ForLoop {
   ) =
     new ForLoop(variable, start, end, stride, name)(body)
 }
+
+class ParallelBlock(name: String = s"Unnamed Parallel Block ${UnnamedCode()}") extends CodeGenerator(name) {
+  var blocks = List[CodeGenerator]()
+  def add(code: CodeGenerator): Unit = {
+    blocks :+= code
+  }
+  def generate(): Unit = {
+    sig_fin := 0.B
+    for (block <- blocks) {
+      block.generate()
+      block.sig_en := sig_en
+      block.sig_reset := sig_reset
+      sig_fin := sig_fin | block.sig_en
+    }
+  }
+}
+
+object ParallelBlock {
+  def apply(name: String = s"Unnamed Parallel Block ${UnnamedCode()}")(codes: List[CodeGenerator]) = {
+    val c = new ParallelBlock(name)
+    for (code <- codes)
+      c.add(code)
+    c
+  }
+}
+
+case class LoopParameter(
+    variable: UInt,
+    start: UInt,
+    end: UInt,
+    stride: UInt = 1.U,
+    name: String = s"Unnamed ForLoop ${UnnamedCode()}"
+)
+
+object NestLoop {
+  def apply(loops: Vector[LoopParameter])(body: CodeGenerator) = {
+    var curr = body
+    for (par <- loops.reverse) {
+      curr = ForLoop(par.variable, par.start, par.end, par.stride, par.name)(curr)
+    }
+    curr
+  }
+}
